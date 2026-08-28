@@ -4,7 +4,7 @@ Candidate: Saad Alston
 
 ## Status
 - [x] Task 1, Step 1: Repository setup
-- [ ] Task 1, Step 2: API with health and metrics endpoints
+- [x] Task 1, Step 2: API with health and metrics endpoints
 - [ ] Task 1, Step 3: AWS credentials
 - [ ] Task 1, Step 4: Terraform EC2 provisioning
 - [ ] Task 1, Step 5: Prometheus scraping and security group validation
