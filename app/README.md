@@ -62,6 +62,9 @@ Buckets are cumulative. All 11 requests completed under 500ms, 3 under 250ms, 1
 under 100ms. Count of 11 against a sum of 3.177 seconds gives a mean of 289ms,
 consistent with the range the endpoint generates.
 
+The `/health` count rises independently of manual requests because the container
+HEALTHCHECK polls the endpoint every 30 seconds.
+
 Runtime user:
 
 ```
