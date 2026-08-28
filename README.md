@@ -26,11 +26,6 @@ block so no resource can be created untagged:
 - candidate: saad_alston
 - server_name: instance_a or instance_b
 
-## Repository controls
-
-- Secret scanning and push protection enabled
-- Terraform state, tfvars, and key material excluded via .gitignore
-
 ## AI usage
 
 AI-assisted content is marked inline with `AI-ASSISTED` and `REFINED`
