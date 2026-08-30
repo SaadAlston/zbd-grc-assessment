@@ -12,6 +12,13 @@ image.
 | `/metrics` | GET | `200`, Prometheus exposition format | Scrape target for Instance B. |
 | `/work` | GET | `200`, JSON status and duration | Optional third endpoint. Generates 10ms to 400ms of latency so the histogram fills with a real distribution. |
 
+`openapi.json` is the generated API contract, committed as a versioned artifact.
+Regenerate it after any endpoint change:
+
+```bash
+curl -s http://localhost:8080/openapi.json | python -m json.tool > openapi.json
+```
+
 ## Metrics
 
 | Metric | Type | Labels | Reasoning |
@@ -21,7 +28,8 @@ image.
 | `app_health_checks_total` | Counter | none | Separates health check volume from application traffic, so the scrape path is provably live with no user requests. |
 
 Label cardinality is deliberately low. Each unique label combination creates a
-time series, so request IDs and user identifiers are excluded.
+separate time series, and Prometheus holds every series in memory, so
+high-cardinality labels such as request IDs or user identifiers are excluded.
 
 `prometheus_client` emits a companion `_created` gauge for each Counter and
 Histogram holding the series initialization timestamp. Library behavior, not
@@ -139,12 +147,18 @@ Verified: `docker ps` reports `Up 3 minutes (healthy)`.
 
 SOC 2 CC7.2. DORA Articles 9 and 10.
 
-### Known gap
+### Risk acceptance: unencrypted scrape path
 
-Traffic to `/metrics` is unencrypted HTTP. In an environment carrying sensitive
-data this needs TLS on the scrape path for SOC 2 CC6.7. The exposed metrics
-contain no sensitive data, so the gap is documented rather than closed. Network
-boundary controls are documented in `terraform/`.
+Prometheus scrapes `/metrics` over plain HTTP. TLS on this path would satisfy
+SOC 2 CC6.7, which covers protection of information during transmission.
+
+The exposed metrics contain request counts and latency distributions. No
+credentials, identifiers, or transaction data. Network-level compensating
+controls are documented in `terraform/` once the security groups are built.
+
+Production remediation would terminate TLS on the scrape endpoint with
+certificates issued through ACM or an internal CA, and configure Prometheus to
+verify them.
 
 ## AI usage
 

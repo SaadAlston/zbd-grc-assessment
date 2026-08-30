@@ -5,6 +5,7 @@ import random
 import time
 
 from fastapi import FastAPI, Response
+from fastapi.responses import PlainTextResponse
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 app = FastAPI(title="zbd-grc-assessment-api")
@@ -28,14 +29,22 @@ HEALTH_CHECKS = Counter(
 )
 
 
-@app.get("/health")
+# [SAAD] response_class declared so the generated OpenAPI contract reports
+# text/plain. FastAPI defaults to application/json without it.
+@app.get("/health", response_class=PlainTextResponse)
 def health():
     HEALTH_CHECKS.inc()
     REQUEST_COUNT.labels(endpoint="/health", status="200").inc()
     return Response(content="I'm healthy", media_type="text/plain", status_code=200)
 
 
-@app.get("/metrics")
+# [SAAD] Same reason. Carries the Prometheus exposition content type into the
+# contract instead of application/json.
+@app.get(
+    "/metrics",
+    response_class=Response,
+    responses={200: {"content": {CONTENT_TYPE_LATEST: {}}}},
+)
 def metrics():
     # [SAAD] No counter increment here. Prometheus scrapes this endpoint every
     # 15 seconds, so counting scrapes would drown out real traffic signal.
