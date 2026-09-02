@@ -1,0 +1,93 @@
+#!/bin/bash
+# AI-ASSISTED: instance B bootstrap script generated with Claude.
+set -euxo pipefail
+
+dnf update -y
+
+dnf install -y docker
+systemctl enable --now docker
+
+dnf install -y amazon-cloudwatch-agent
+
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWAGENT'
+{
+  "agent": {
+    "metrics_collection_interval": 60
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/messages",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}/var/log/messages"
+          },
+          {
+            "file_path": "/var/log/secure",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}/var/log/secure"
+          },
+          {
+            "file_path": "/var/log/cloud-init-output.log",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}/cloud-init-output.log"
+          }
+        ]
+      }
+    }
+  }
+}
+CWAGENT
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+cat > /etc/ssh/sshd_config.d/99-hardening.conf <<'SSHD'
+PasswordAuthentication no
+PermitRootLogin no
+PermitEmptyPasswords no
+SSHD
+
+sshd -t
+systemctl restart sshd
+
+dnf install -y dnf-automatic
+sed -i 's/^upgrade_type = .*/upgrade_type = security/' /etc/dnf/automatic.conf
+sed -i 's/^apply_updates = .*/apply_updates = yes/' /etc/dnf/automatic.conf
+systemctl enable --now dnf-automatic.timer
+
+# --- Prometheus ---
+# [SAAD] The scrape target is instance A's private IP, interpolated by
+# Terraform at apply time. A private address rather than public keeps the
+# scrape inside the VPC, so it never traverses the internet gateway and the
+# source security group rule is the only path.
+mkdir -p /etc/prometheus
+
+cat > /etc/prometheus/prometheus.yml <<PROMCFG
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: instance_a_api
+    static_configs:
+      - targets:
+          - ${api_private_ip}:${api_port}
+PROMCFG
+
+# [SAAD] Pinned by digest, same reason as the application base image. A tag is
+# a mutable pointer, so the same user data would produce different software
+# over time. The digest is a content hash, so a substituted image fails to
+# pull rather than running silently. Digest read from the v3.1.0 tag on
+# September 1, 2026.
+docker run -d \
+  --name prometheus \
+  --restart unless-stopped \
+  -p ${prometheus_port}:9090 \
+  -v /etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+  --log-driver=awslogs \
+  --log-opt awslogs-region=${aws_region} \
+  --log-opt awslogs-group=${log_group_name} \
+  --log-opt awslogs-stream=container/prometheus \
+    prom/prometheus@sha256:6559acbd5d770b15bb3c954629ce190ac3cbbdb2b7f1c30f0385c4e05104e218

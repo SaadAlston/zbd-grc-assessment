@@ -1,0 +1,103 @@
+#!/bin/bash
+# AI-ASSISTED: instance A bootstrap script generated with Claude.
+set -euxo pipefail
+
+# [SAAD] set -e stops the script on the first failed command instead of
+# continuing and leaving a half configured host that looks healthy to the
+# console. -u catches unset variables. -x writes every command to the log so
+# cloud-init-output.log is a usable record of what ran.
+
+dnf update -y
+
+# --- Docker ---
+dnf install -y docker git
+systemctl enable --now docker
+
+# --- CloudWatch agent ---
+dnf install -y amazon-cloudwatch-agent
+
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWAGENT'
+{
+  "agent": {
+    "metrics_collection_interval": 60
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/messages",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}/var/log/messages"
+          },
+          {
+            "file_path": "/var/log/secure",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}/var/log/secure"
+          },
+          {
+            "file_path": "/var/log/cloud-init-output.log",
+            "log_group_name": "${log_group_name}",
+            "log_stream_name": "{instance_id}/cloud-init-output.log"
+          }
+        ]
+      }
+    }
+  }
+}
+CWAGENT
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+# --- Hardening: SSH ---
+# [SAAD] Written as a drop-in rather than editing sshd_config. Amazon Linux
+# 2023 already defaults to these values. Setting them explicitly means a
+# future base image change cannot silently re-enable password auth, and the
+# setting is visible in one small file instead of buried in the distribution
+# default.
+cat > /etc/ssh/sshd_config.d/99-hardening.conf <<'SSHD'
+PasswordAuthentication no
+PermitRootLogin no
+PermitEmptyPasswords no
+SSHD
+
+sshd -t
+systemctl restart sshd
+
+# --- Hardening: automatic security updates ---
+# [SAAD] Unattended patching on a sandbox host. In production this belongs in
+# Patch Manager with a maintenance window and a rollback path, which is what
+# Task 3 builds. dnf-automatic applies security updates without either, so it
+# is the right control here and the wrong one at scale.
+dnf install -y dnf-automatic
+sed -i 's/^upgrade_type = .*/upgrade_type = security/' /etc/dnf/automatic.conf
+sed -i 's/^apply_updates = .*/apply_updates = yes/' /etc/dnf/automatic.conf
+systemctl enable --now dnf-automatic.timer
+
+# --- Application ---
+# [SAAD] Built from the public repo on the instance rather than pulled from a
+# registry. The image is the artifact under review and building it here keeps
+# the running container traceable to a commit without adding a registry push
+# to the assessment scope. Production would build once in CI, scan the image,
+# push to ECR and pull an immutable digest. Building on the host means the
+# build toolchain lives on a running server, which is the reason not to do it
+# outside a sandbox.
+cd /opt
+git clone ${repo_url} app
+cd app/app
+docker build -t ${container_name}:local .
+
+# [SAAD] awslogs log driver rather than the CloudWatch agent tailing container
+# log files. The Docker daemon holds the instance role credentials and ships
+# stdout directly, so there is no log file on disk to rotate or lose.
+docker run -d \
+  --name ${container_name} \
+  --restart unless-stopped \
+  -p ${api_port}:${api_port} \
+  --log-driver=awslogs \
+  --log-opt awslogs-region=${aws_region} \
+  --log-opt awslogs-group=${log_group_name} \
+  --log-opt awslogs-stream=container/${container_name} \
+  ${container_name}:local
