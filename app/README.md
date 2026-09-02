@@ -16,7 +16,7 @@ image.
 Regenerate it after any endpoint change:
 
 ```bash
-curl -s http://localhost:8080/openapi.json | python -m json.tool > openapi.json
+curl -s http://localhost:8000/openapi.json | python -m json.tool > openapi.json
 ```
 
 ## Metrics
@@ -40,15 +40,15 @@ application code. Consumers use them to detect counter resets after a restart.
 ```bash
 cd app
 docker build -t zbd-api:local .
-docker run --rm -p 8080:8080 zbd-api:local
+docker run --rm -p 8000:8000 zbd-api:local
 ```
 
 Generate traffic and read the metrics:
 
 ```bash
-curl http://localhost:8080/health
-for i in {1..10}; do curl -s http://localhost:8080/work > /dev/null; done
-curl -s http://localhost:8080/metrics | grep app_
+curl http://localhost:8000/health
+for i in {1..10}; do curl -s http://localhost:8000/work > /dev/null; done
+curl -s http://localhost:8000/metrics | grep app_
 ```
 
 ## Verification

@@ -21,11 +21,18 @@ COPY main.py .
 # count the container scan reports in the Task 2 pipeline.
 USER appuser
 
-EXPOSE 8080
+# [SAAD] 8000 here has to match api_port in the Terraform module. The module
+# feeds that variable to the security group rule, the docker run publish and
+# the Prometheus scrape target. This literal is the one place the value is not
+# derived from it, so a change here breaks the scrape silently. Caught once:
+# the app ran on 8080 while the module published 8000, and the container
+# reported healthy because the HEALTHCHECK polls from inside the container
+# where the mismatch does not exist.
+EXPOSE 8000
 
 # [SAAD] Container-level healthcheck so the runtime reports state independent
 # of Prometheus. Supports SI-4 system monitoring.
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

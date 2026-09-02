@@ -42,6 +42,12 @@ identified. I reviewed the reasoning in both cases.
   of Prometheus.
 - Selected the slim base to reduce the package count the Task 2 container scan
   reports.
+- Changed the listen port from 8080 to 8000 to match the Terraform module's
+  `api_port`. The generated Dockerfile used 8080 in `EXPOSE`, the
+  `HEALTHCHECK` and the `CMD`, and the module published 8000. The container
+  reported healthy while the published port reset every connection, because
+  the healthcheck runs inside the container. Same change applied to the `PORT`
+  fallback in `app/main.py` and the examples in `app/README.md`.
 
 ## app/README.md
 
