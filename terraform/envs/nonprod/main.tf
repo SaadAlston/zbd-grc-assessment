@@ -13,4 +13,11 @@ module "app_stack" {
   ssh_ingress_cidr = var.ssh_ingress_cidr
   key_pair_name    = var.key_pair_name
   repo_url         = var.repo_url
+  # [SAAD] Flow logs disabled. The role needs write access to its log group,
+  # and the scoped customer managed policy fails because iam:CreatePolicy is
+  # explicitly denied by security_engineer_policy in this account. The
+  # available workaround is attaching CloudWatchLogsFullAccess, which grants
+  # write access to every log group in a shared account. Step 5 evidence comes
+  # from the Prometheus target state instead.
+  enable_flow_logs = false
 }
