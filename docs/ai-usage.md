@@ -65,8 +65,14 @@ security rationale.
 **Generated:** Exclusion patterns for Terraform, Python, credentials, editor
 artifacts.
 
-**Refinement:** Removed `.terraform.lock.hcl`. The lock file pins provider
-versions and belongs in version control.
+**Refinements:**
+- Removed `.terraform.lock.hcl`. The lock file pins provider versions and
+  belongs in version control.
+- Removed `!example.tfvars`. The exception pointed at a filename I do not
+  create, and `terraform.tfvars.example` was never matched by `*.tfvars` in the
+  first place.
+- Added `*.tfplan`. Saved plan files hold resolved values including the
+  operator IP and rendered user data.
 
 ## terraform/modules/app_stack/versions.tf
 
