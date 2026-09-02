@@ -1,5 +1,9 @@
 # AI-ASSISTED: VPC, subnet, routing and flow log resources generated with Claude.
 
+# [SAAD] Own VPC rather than the existing 10.0.0.0/16. This is a shared
+# sandbox with other candidates and a founder instance running. A separate
+# CIDR means nothing I create can route to anything I did not, and destroy
+# removes everything without touching another tenant.
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
@@ -10,10 +14,6 @@ resource "aws_vpc" "main" {
   }
 }
 
-# [SAAD] Own VPC rather than the existing 10.0.0.0/16. This is a shared
-# sandbox with other candidates and a founder instance running. A separate
-# CIDR means nothing I create can route to anything I did not, and destroy
-# removes everything without touching another tenant.
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.subnet_cidr
@@ -63,6 +63,10 @@ resource "aws_default_security_group" "default" {
   }
 }
 
+# [SAAD] Flow logs produce the evidence for Step 5. When I break the source
+# security group rule the Prometheus UI shows the target down. Flow logs show
+# REJECT records for the scrape connection at the same time, which proves the
+# security group caused it rather than the application failing.
 resource "aws_cloudwatch_log_group" "flow_logs" {
   count = var.enable_flow_logs ? 1 : 0
 
@@ -75,10 +79,6 @@ resource "aws_cloudwatch_log_group" "flow_logs" {
   }
 }
 
-# [SAAD] Flow logs produce the evidence for Step 5. When I break the source
-# security group rule the Prometheus UI shows the target down. Flow logs show
-# REJECT records for the scrape connection at the same time, which proves the
-# security group caused it rather than the application failing.
 resource "aws_iam_role" "flow_logs" {
   count = var.enable_flow_logs ? 1 : 0
 

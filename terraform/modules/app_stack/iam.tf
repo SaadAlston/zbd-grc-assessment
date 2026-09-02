@@ -44,14 +44,15 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# [SAAD] Blocked at time of writing. The assessment IAM policy grants
-# iam:CreateRole and iam:AttachRolePolicy but not iam:CreateInstanceProfile,
-# iam:AddRoleToInstanceProfile or iam:PassRole. Verified with a RunInstances
-# dry run: the call succeeds without an instance profile and fails naming
-# iam:PassRole with one. Requested from Thomas Montgomery. The alternative,
-# static IAM keys in user data, writes long lived credentials into instance
-# metadata and into Terraform state, which is not an acceptable trade for a
-# permission that can be granted.
+# [SAAD] This resource was blocked when the module was written. The assessment
+# IAM policy granted iam:CreateRole and iam:AttachRolePolicy but not
+# iam:CreateInstanceProfile, iam:AddRoleToInstanceProfile or iam:PassRole.
+# Isolated with a RunInstances dry run: the call succeeded without an instance
+# profile and failed naming iam:PassRole with one. Requested from Thomas
+# Montgomery and granted, then re-verified by dry run. The alternative was
+# static IAM keys in user data, which writes long lived credentials into
+# instance metadata and into Terraform state. Not an acceptable trade for a
+# permission that can be granted by asking.
 resource "aws_iam_instance_profile" "instance" {
   name = "${var.candidate}-${var.environment}-instance-profile"
   role = aws_iam_role.instance.name
