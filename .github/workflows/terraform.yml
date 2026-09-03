@@ -1,0 +1,136 @@
+# AI-ASSISTED: GitHub Actions workflow for scanning and Terraform plan generated with Claude.
+
+name: terraform
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: 1.16.0
+  AWS_REGION: us-east-1
+
+jobs:
+  # [SAAD] Scanning runs before anything touches AWS. Ordering inside the job is
+  # secrets, then infrastructure code, then the container image. Cheapest and
+  # most damaging first. A leaked credential does not become less leaked because
+  # the Terraform passed validation afterward.
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # [SAAD] Full history. Gitleaks scanning only the latest commit misses
+          # a credential added earlier in the branch and amended out of the tip.
+          # A public repo is cloned in full by anyone, so the scan has to cover
+          # what they would see.
+          fetch-depth: 0
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          # [SAAD] soft_fail false. A scanner that reports without blocking is a
+          # report nobody reads. Findings that are accepted rather than fixed
+          # carry an inline checkov:skip with a written rationale, which makes
+          # the acceptance reviewable in the diff instead of invisible in a log.
+          soft_fail: false
+
+      - name: Build image
+        run: docker build -t zbd-api:${{ github.sha }} ./app
+
+      - name: Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: zbd-api:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          # [SAAD] Unfixed vulnerabilities are ignored. A finding with no
+          # available patch cannot be actioned by this pipeline, and failing on
+          # it trains people to bypass the gate. It stays visible in the scan
+          # output and belongs in vulnerability management, not in a merge block.
+          ignore-unfixed: true
+
+  # [SAAD] Plan runs only after scanning passes and only produces a plan. Apply
+  # is a separate job gated on the merge to main. Plan is the review artifact,
+  # apply is the gated action, and separating them is what makes the pull
+  # request a control rather than a formality.
+  plan:
+    needs: scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # [SAAD] Credentials come from GitHub secrets here because this account
+      # has no OIDC provider configured. OIDC with a role assumed by the
+      # workflow is the correct pattern: no long-lived key, credentials scoped
+      # to the repository and branch, and nothing to rotate. Documented as a
+      # gap rather than presented as the intended design.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Init
+        run: terraform init
+        working-directory: terraform/envs/nonprod
+
+      - name: Validate
+        run: terraform validate
+        working-directory: terraform/envs/nonprod
+
+      - name: Plan
+        run: terraform plan -no-color -var="ssh_ingress_cidr=${{ secrets.SSH_INGRESS_CIDR }}"
+        working-directory: terraform/envs/nonprod
+
+  apply:
+    needs: scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # [SAAD] A GitHub environment with a required reviewer turns apply into a
+    # human decision rather than a merge side effect. Not configured in this
+    # repository, since I am the only reviewer and approving my own apply is
+    # not a control.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Init
+        run: terraform init
+        working-directory: terraform/envs/nonprod
+
+      - name: Apply
+        run: terraform apply -auto-approve -var="ssh_ingress_cidr=${{ secrets.SSH_INGRESS_CIDR }}"
+        working-directory: terraform/envs/nonprod
