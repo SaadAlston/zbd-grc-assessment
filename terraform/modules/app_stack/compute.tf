@@ -21,6 +21,8 @@ data "aws_ami" "al2023" {
 }
 
 resource "aws_instance" "api" {
+  # checkov:skip=CKV_AWS_126:Detailed monitoring adds one-minute EC2 metrics at cost. Prometheus already scrapes application metrics from instance A and the CloudWatch agent ships system logs from both. Nothing here depends on sub-five-minute EC2 metrics.
+  # checkov:skip=CKV_AWS_135:t3.micro has EBS optimization enabled by default and the attribute is not configurable on this instance family. The check cannot read that from the instance type, so this is a false positive rather than an acceptance.
   ami                    = data.aws_ami.al2023.id
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public.id
@@ -76,6 +78,8 @@ resource "aws_instance" "api" {
 # cannot scrape a target it cannot address, and a hardcoded IP would hide the
 # dependency rather than remove it.
 resource "aws_instance" "prometheus" {
+  # checkov:skip=CKV_AWS_126:Detailed monitoring adds one-minute EC2 metrics at cost. Prometheus already scrapes application metrics from instance A and the CloudWatch agent ships system logs from both. Nothing here depends on sub-five-minute EC2 metrics.
+  # checkov:skip=CKV_AWS_135:t3.micro has EBS optimization enabled by default and the attribute is not configurable on this instance family. The check cannot read that from the instance type, so this is a false positive rather than an acceptance.
   ami                    = data.aws_ami.al2023.id
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public.id

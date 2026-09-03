@@ -15,6 +15,7 @@ resource "aws_vpc" "main" {
 }
 
 resource "aws_subnet" "public" {
+  # checkov:skip=CKV_AWS_130:Public IPs are required. SSH access is a stated assessment requirement and both hosts pull packages and container images with no NAT gateway or VPC endpoints available. Access is restricted to one operator /32 for SSH and the Prometheus UI, and the scrape path uses a source security group rule rather than any public address. Production would place instances in private subnets behind a NAT gateway with SSM Session Manager for access.
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.subnet_cidr
   availability_zone       = var.availability_zone
