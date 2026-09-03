@@ -1,0 +1,2 @@
+# Copy to terraform.tfvars and set your own value. terraform.tfvars is gitignored.
+ssh_ingress_cidr = "203.0.113.10/32"
